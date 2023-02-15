@@ -37,8 +37,6 @@ spec:
         server: '{{server}}'
         namespace: '{{name}}-nginx-ingress'
       syncPolicy:
-        automated:
-          prune: true
-          selfHeal: true
+        automated: {}
         syncOptions:
           - CreateNamespace=true
