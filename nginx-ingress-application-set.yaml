@@ -9,7 +9,7 @@ spec:
         generators:
           - git:
               repoURL: https://github.com/jarfernandez/argocd-matrix-generator.git
-              revision: master
+              revision: main
               files:
                 - path: "cluster-config/*/config.yaml"
           - clusters:
@@ -30,7 +30,7 @@ spec:
               - $matrix/values/nginx-ingress/global-values.yaml
               - $matrix/values/nginx-ingress/{{name}}-values.yaml
         - repoURL: https://github.com/jarfernandez/argocd-matrix-generator.git
-          targetRevision: master
+          targetRevision: main
           ref: matrix
       project: default
       destination:
