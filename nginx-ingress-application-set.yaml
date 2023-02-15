@@ -40,3 +40,8 @@ spec:
         automated: {}
         syncOptions:
           - CreateNamespace=true
+      ignoreDifferences:
+        - group: "*"
+          kind: Service
+          jqPathExpressions:
+            - '.spec.ports[].nodePort'
