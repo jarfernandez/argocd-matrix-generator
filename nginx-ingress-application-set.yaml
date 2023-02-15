@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: nginx-ingress-application-set
+  namespace: argocd
+spec:
+  generators:
+    - matrix:
+        generators:
+          - git:
+              repoURL: https://github.com/jarfernandez/argocd-matrix-generator.git
+              revision: master
+              files:
+                - path: "cluster-config/*/config.yaml"
+          - clusters:
+              selector:
+                matchLabels:
+                  environment: '{{path.basename}}'
+  template:
+    metadata:
+      name: '{{name}}-nginx-ingress'
+    spec:
+      sources:
+        - chart: nginx-ingress
+          repoURL: https://helm.nginx.com/stable
+          targetRevision: '{{apps.nginxIngress.helmChartVersion}}'
+          helm:
+            releaseName: '{{name}}-nginx-ingress'
+            valueFiles:
+              - $matrix/values/nginx-ingress/global-values.yaml
+              - $matrix/values/nginx-ingress/{{name}}-values.yaml
+        - repoURL: https://github.com/jarfernandez/argocd-matrix-generator.git
+          targetRevision: master
+          ref: matrix
+      project: default
+      destination:
+        server: '{{server}}'
+        namespace: '{{name}}-nginx-ingress'
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+        syncOptions:
+          - CreateNamespace=true
