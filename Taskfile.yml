@@ -1,0 +1,95 @@
+version: '3'
+
+tasks:
+  install:
+    aliases: [default]
+    desc: Instalar 3 clusters Kubernetes con kind, desplegar y configurar Argo CD, y desplegar NGINX Ingress Controller.
+    cmds:
+      - task: nginx
+
+  check-commands:
+    desc: Comprobar si los comandos kind, kubectl, helm y argocd están instalados.
+    cmds:
+      - |
+        commands=("kind" "kubectl" "helm" "argocd")
+        missing_commands=""
+        
+        for cmd in "${commands[@]}"; do
+          if ! command -v $cmd &> /dev/null; then
+            missing_commands+="$cmd "
+          fi
+        done
+        
+        if [ -n "$missing_commands" ]; then
+          echo "Los siguientes comandos no están instalados: $missing_commands"
+          exit 1
+        fi
+
+  kind:
+    aliases: [k8s, kubernetes]
+    desc: Instalar 3 clusters Kubernetes con kind.
+    deps: [check-commands]
+    cmds:
+      - |
+        if ! kind get clusters | grep -q argocd; then
+          kind create cluster --name argocd
+        fi
+        if ! kind get clusters | grep -q dev; then
+          kind create cluster --name dev
+        fi
+        if ! kind get clusters | grep -q prod; then
+          kind create cluster --name prod
+        fi
+
+  argocd:
+    aliases: [deploy-argocd]
+    desc: Desplegar y configurar Argo CD.
+    deps: [kind]
+    cmds:
+      - |
+        if ! kubectl get ns | grep -q argocd; then
+          kubectl config use-context kind-argocd
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm install argocd argo/argo-cd --namespace argocd --create-namespace
+        
+          while kubectl get pods -n argocd --no-headers | grep -vq "Running"; do
+            echo "Esperando a que todos los pods de Argo CD estén en estado Running..."
+            sleep 5
+          done
+          
+          kubectl config set-context --current --namespace argocd
+          argocd cluster add kind-dev --core --label environment=dev --name dev --yes
+          argocd cluster add kind-prod --core --label environment=prod --name prod --yes
+        
+          secret=$(kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=cluster --no-headers | awk '{ print $1 }' | head -1)
+          env=$(kubectl get secret -n argocd $secret -ojsonpath="{.data.name}" | base64 -d ; echo)
+          server=$(echo -n "https://$(kubectl get endpoints --context kind-$env -n default --no-headers | awk '{ print $2 }')" | base64)
+          kubectl patch secret $secret --type='json' -p='[{"op" : "replace" ,"path" : "/data/server" ,"value" : "'$server'"}]'
+          secret=$(kubectl get secret -n argocd -l argocd.argoproj.io/secret-type=cluster --no-headers | awk '{ print $1 }' | tail -1)
+          env=$(kubectl get secret -n argocd $secret -ojsonpath="{.data.name}" | base64 -d ; echo)
+          server=$(echo -n "https://$(kubectl get endpoints --context kind-$env -n default --no-headers | awk '{ print $2 }')" | base64)
+          kubectl patch secret $secret --type='json' -p='[{"op" : "replace" ,"path" : "/data/server" ,"value" : "'$server'"}]'
+        fi
+
+  argocd-admin-password:
+    aliases: [argocd-admin-passwd, admin-password, admin-passwd]
+    desc: Obtener la contraseña de administración de Argo CD.
+    deps: [argocd]
+    cmds:
+      - kubectl get secret -n argocd argocd-initial-admin-secret -ojsonpath="{.data.password}" | base64 -d ; echo
+
+  nginx:
+    aliases: [nginx-ingress-controller, ingress-controller]
+    desc: Desplegar NGINX Ingress Controller.
+    deps: [argocd]
+    cmds:
+      - kubectl apply -f nginx-ingress-application-set.yaml
+
+  uninstall:
+    aliases: [delete]
+    desc: Desinstalar los 3 clusters Kubernetes.
+    prompt: Esta tarea desinstalará los 3 clusters Kubernetes... ¿Quieres continuar?
+    cmds:
+      - kind delete cluster --name argocd
+      - kind delete cluster --name dev
+      - kind delete cluster --name prod
