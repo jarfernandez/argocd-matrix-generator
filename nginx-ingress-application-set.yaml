@@ -17,7 +17,7 @@ spec:
                 matchLabels:
                   environment: '{{path.basename}}'
                 matchExpressions:
-                  - { key: environment, operator: NotIn, values: [dev] }
+                  - { key: environment, operator: In, values: [dev, prod] }
   template:
     metadata:
       name: '{{name}}-nginx-ingress'
